@@ -3,6 +3,8 @@
 " Version: 1.0
 " License: GPL
 "
+" $Id: Qt.vim,v 1.4 2003/04/03 21:37:04 dihar Exp $
+"
 " GVIM Version:  6.0+
 " 
 " Description: Plugin for calling the uic / qmake 
@@ -20,9 +22,8 @@
 " Installation:
 " Simply drop this file into your plugin directory.
 "
-" Changelog:
-" 2003-04-02 v1.0
-" 	Initial release
+"
+" TODO : wenn kein ui geladen ist ??
 "
 
 "==============================================================================
@@ -37,7 +38,8 @@ let loaded_qt = 1
 "==============================================================================
 " general settings - please change to your paths 
 "==============================================================================
-let s:qtdir           = "/usr/local/qt"       " where your $QTDIR points to
+
+let s:qtdir           = $QTDIR
 let s:uic             = s:qtdir ."/bin/uic"
 let s:qmake           = s:qtdir ."/bin/qmake"
 let s:qttype          = "thread"              " qt compiled with threads
@@ -45,11 +47,13 @@ let s:qttype          = "thread"              " qt compiled with threads
 let s:basedir         = "BASE"
 
 
+"==============================================================================
+" Setup the Menus
+"==============================================================================
 nmenu &Plugin.&QT.UIC\ Impl                     :call <SID>Qt_UicCall()<CR>
 imenu &Plugin.&QT.UIC\ Impl                     :<Esc>call <SID>Qt_UicCall()<CR>
 nmenu &Plugin.&QT.UIC\ subImpl                  :call <SID>Qt_UicSubCall()<CR>
 imenu &Plugin.&QT.UIC\ subImpl                  :<Esc>call <SID>Qt_UicSubCall()<CR>
-
 
 
 "==============================================================================
@@ -57,14 +61,16 @@ imenu &Plugin.&QT.UIC\ subImpl                  :<Esc>call <SID>Qt_UicSubCall()<
 "==============================================================================
 fun! s:Qt_UicCall()
 
-  if s:qtdir == "" || s:basedir == ""
-    echo ("s:qtdir oder s:basedir nicht gesetzt")
+  " --- Setup QTDIR
+  if s:setupQtdir()
     return
   endif
 
   let l:clname = s:GetClassName()
 
   if l:clname != ""
+    " --- Change to current dir
+    cd %:h 
     execute ":!" .s:uic ." % -o ".l:clname.".h"
     execute ":!" .s:uic ." -impl ".l:clname.".h % -o ".l:clname.".cpp"
     execute "edit ".l:clname.".h"
@@ -77,49 +83,56 @@ endfunction
 "==============================================================================
 fun! s:Qt_UicSubCall()
 
-  if s:qtdir == "" || s:basedir == ""
-    echo ("s:qtdir oder s:basedir nicht gesetzt")
+  " --- Setup QTDIR
+  if s:setupQtdir()
     return
   endif
 
   let l:clname = s:GetClassName()
 
   if l:clname != ""
-    " --- create BASE-Dir
-    let l:ret = system("mkdir " .s:basedir)
-    if strlen(l:ret) == 0
-      "
-      " --- call the UIC 
-      execute ":!" .s:uic ." % -o ".l:clname.".h"
-      execute ":!" .s:uic ." -impl ".l:clname.".h % -o " .l:clname.".cpp"
-      execute ":!" .s:uic ." -subdecl " .l:clname ."Impl " .l:clname .".h " " % -o " .l:clname ."Impl.h"
-      execute ":!" .s:uic ." -subimpl " .l:clname."Impl " .l:clname ."Impl.h % -o ".l:clname."Impl.cpp"
-      "
-      " --- move to BASE-Dir
-      let l:cmd = "mv " .expand("%") ." " .s:basedir ."/" .l:clname .".ui" 
-      call system(l:cmd) 
-      let l:cmd = "mv " .l:clname .".h " .l:clname .".cpp " .s:basedir
-      call system(l:cmd) 
-      "
-      " --- Was haben wir den da ?!
-      execute "edit " .l:clname ."Impl.cpp"
-      execute "split | edit " .l:clname ."Impl.h"
-      execute "split | edit main.cpp"
-      call s:CreateMainFile( l:clname )
-      execute "write"
+    " --- Change to current dir
+    cd %:h 
 
-      execute "split | edit my.pro"
-      call s:CreateProFile( l:clname )
-      execute "write"
+    if !isdirectory( s:basedir)
+      " --- create BASE-Dir
+      let l:ret = system("mkdir " .s:basedir)
+    endif
 
+    "
+    " --- call the UIC 
+    execute ":!" .s:uic ." % -o ".l:clname.".h"
+    execute ":!" .s:uic ." -impl ".l:clname.".h % -o " .l:clname.".cpp"
+    execute ":!" .s:uic ." -subdecl " .l:clname ."Impl " .l:clname .".h " " % -o " .l:clname ."Impl.h"
+    execute ":!" .s:uic ." -subimpl " .l:clname."Impl " .l:clname ."Impl.h % -o ".l:clname."Impl.cpp"
+    "
+    " --- move to BASE-Dir
+    let l:cmd = "mv " .expand("%") ." " .s:basedir ."/" .l:clname .".ui" 
+    call system(l:cmd) 
+    let l:cmd = "mv " .l:clname .".h " .l:clname .".cpp " .s:basedir
+    call system(l:cmd) 
+    "
+    " --- here we are !!
+    execute "edit " .l:clname ."Impl.cpp"
+    execute "split | edit " .l:clname ."Impl.h"
+    execute "split | edit main.cpp | 1,$d"
+    call s:CreateMainFile( l:clname )
+    execute "write"
+
+    execute "split | edit my.pro | 1,$d"
+    let l:ret = s:CreateProFile( l:clname )
+    if l:ret != ""
+      execute "write"
       " --- qmake
       let l:ret = confirm("Should I run qmake now ?", "&Yes\n&No", 1, "Question")
       if l:ret == 1
-        execute s:qmake ." my.pro "
-        " --- make
-        let l:ret = confirm("Should I run make now ?", "&Yes\n&No", 1, "Question")
-        if l:ret == 1
-          execute "make"
+        let l:ret = system( s:qmake)
+        if l:ret == ""
+          " --- make
+          let l:ret = confirm("Should I run make now ?", "&Yes\n&No", 1, "Question")
+          if l:ret == 1
+            execute "make"
+          endif
         endif
       endif
     endif
@@ -140,7 +153,6 @@ function s:GetClassName()
   let l:counter = 1
 
   while l:counter < line("$") 
-    "echo l:counter
     let l:ret = matchstr( getline(l:counter) , "<class>.*</class>")
     if strlen(l:ret) != 0
       let l:starts = matchend( getline(l:counter) , ">")
@@ -189,25 +201,40 @@ endfun
 function s:CreateProFile( clname)
 
   let l:target = inputdialog("What should by the name of the new program ?", a:clname )
-  if l:target == ""
-    " --- no program name ?? -- What's that ?
-    return
-  endif
 
   call append("$",  "TEMPLATE = app")
   call append("$", "CONFIG	+= " .s:qttype ." warn_on release")
   call append("$", "")
   call append("$", "SOURCES	+= main.cpp")
-  call append("$", "FORMS	 = ./BASE/" .a:clname .".ui")
+  call append("$", "FORMS	 = ./" .s:basedir ."/" .a:clname .".ui")
   call append("$", "SOURCES	+= " .a:clname ."Impl.cpp")
   call append("$", "HEADERS	+= " .a:clname ."Impl.h")
   call append("$", "")
   call append("$", "LANGUAGE = C++")
   call append("$", "unix {")
-  call append("$", "       TARGET      = " .l:target ."")
+  if l:target != ""
+    call append("$", "       TARGET      = " .l:target ."")
+  endif
   call append("$", "       UI_DIR      = .ui")
   call append("$", "       MOC_DIR     = .moc")
   call append("$", "       OBJECTS_DIR = .obj")
   call append("$", "}")
+
+  return l:target
+
+endfun
+"==============================================================================
+" setup $QTDIR
+"==============================================================================
+function s:setupQtdir()
+
+  if $QTDIR == ""
+    let l:ret = confirm("$QTDIR not found. Shall I point it to /usr/local/qt ?", "&Yes\n&No", 1, "Question")
+    if l:ret == 1
+      let $QTDIR = "/usr/local/qt"
+    else
+      return 1
+    endif
+  endif
 
 endfun
