@@ -3,7 +3,7 @@
 " Version: 1.0
 " License: GPL
 "
-" $Id: Qt.vim,v 1.4 2003/04/03 21:37:04 dihar Exp $
+" $Id: Qt.vim,v 1.5 2003/04/04 14:07:56 dihar Exp $
 "
 " GVIM Version:  6.0+
 " 
@@ -22,8 +22,6 @@
 " Installation:
 " Simply drop this file into your plugin directory.
 "
-"
-" TODO : wenn kein ui geladen ist ??
 "
 
 "==============================================================================
@@ -50,6 +48,7 @@ let s:basedir         = "BASE"
 "==============================================================================
 " Setup the Menus
 "==============================================================================
+
 nmenu &Plugin.&QT.UIC\ Impl                     :call <SID>Qt_UicCall()<CR>
 imenu &Plugin.&QT.UIC\ Impl                     :<Esc>call <SID>Qt_UicCall()<CR>
 nmenu &Plugin.&QT.UIC\ subImpl                  :call <SID>Qt_UicSubCall()<CR>
@@ -57,12 +56,16 @@ imenu &Plugin.&QT.UIC\ subImpl                  :<Esc>call <SID>Qt_UicSubCall()<
 
 
 "==============================================================================
-" Qt : UIC - Aufrufe
+" Qt : UIC - Call
 "==============================================================================
 fun! s:Qt_UicCall()
 
+  " --- Check for ui-file
+  if !s:check4UiFile()
+    return
+  endif
   " --- Setup QTDIR
-  if s:setupQtdir()
+  if !s:setupQtdir()
     return
   endif
 
@@ -70,6 +73,7 @@ fun! s:Qt_UicCall()
 
   if l:clname != ""
     " --- Change to current dir
+    echo expand("%:h") ."<-- current dir"
     cd %:h 
     execute ":!" .s:uic ." % -o ".l:clname.".h"
     execute ":!" .s:uic ." -impl ".l:clname.".h % -o ".l:clname.".cpp"
@@ -79,12 +83,16 @@ fun! s:Qt_UicCall()
 
 endfunction
 "==============================================================================
-" Qt : UIC - Aufrufe
+" Qt : UIC - Call
 "==============================================================================
 fun! s:Qt_UicSubCall()
 
+  " --- Check for ui-file
+  if !s:check4UiFile()
+    return
+  endif
   " --- Setup QTDIR
-  if s:setupQtdir()
+  if !s:setupQtdir()
     return
   endif
 
@@ -225,6 +233,9 @@ function s:CreateProFile( clname)
 endfun
 "==============================================================================
 " setup $QTDIR
+" looking for environment QTDIR and point it to /usr/local/qt if you want
+" return 1 -> ok
+" return 0 -> no $QTDIR
 "==============================================================================
 function s:setupQtdir()
 
@@ -233,8 +244,34 @@ function s:setupQtdir()
     if l:ret == 1
       let $QTDIR = "/usr/local/qt"
     else
-      return 1
+      return 0
     endif
   endif
+
+  let s:qtdir  = $QTDIR
+  let s:uic    = s:qtdir ."/bin/uic"
+  let s:qmake  = s:qtdir ."/bin/qmake"
+  return 1
+
+endfun
+"==============================================================================
+" check if current file is a ui-file
+" return 0 -> no vallid ui File
+" return 1 -> vallid ui File
+"==============================================================================
+function s:check4UiFile()
+
+  let l:counter = 1
+
+  while l:counter < line("$") 
+    let l:ret = matchstr( getline(l:counter) , "<!DOCTYPE UI>")
+    if strlen(l:ret) != 0
+      return 1
+    endif
+    let l:counter = l:counter + 1
+  endwhile
+
+  call confirm("Sorry, that seems to be not a valid ui-File ", "&Ok", 1, "Error")
+  return 0
 
 endfun
